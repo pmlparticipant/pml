@@ -1,0 +1,106 @@
+ponadto's report  
+========================================================
+
+Let my start off by stating that I didn't have much time to thoroughly investigate different ways of completing this task.
+I've tried to stick to __caret__ library, and re-use the code that I've learned during this course.
+
+I really liked the "predicting with trees" idea (it was simple, and easily interpretable), and I knew that random forests are an even more powerful method (although I do admit the concept is not as clear).
+
+So I uploaded the __caret__ library, and copied the *pml_write_files* function provided on the coursera website.
+
+
+```{r}
+library(caret)
+library(e1071) # needed in "predict"
+library(randomForest) # needed in "train"
+set.seed(647)
+
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+```
+
+Then, I uploaded both the data from the training and the testing CSV files:
+
+```{r}
+data <- read.csv("pml-training.csv",na.strings=c("NA",""))
+testData <- read.csv("pml-testing.csv",na.strings=c("NA",""))
+```
+
+I should mention that beforehand I took a look at how the pml-testing.csv file looks like, and I've noticed there are a lot of "NA"-s and empty strings ("").
+That's the reason behind the na.string option in read.csv.
+
+Now, to start off I took a look at the names of the testData structure.
+I've noticed that some of the fields (e.g. "X", "user_name") are nonsensical and that I shouldn't use them for predictions.
+It was especially tricky with "X", because it seems that the participants did their exercises sequentially (i.e. first A-type, then B-type, and so on), so it would be easy to train a model, which would have very high accuracy (if based on "X"), but only within the training data-set.
+
+That's why I gathered these nonsensical field names in the __dumbParameters__ variable:
+```{r}
+dumbParameters <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
+```
+I then took the valuable data (and called it __strippedData__):
+```{r}
+indicesOfDumbParameters <- which(names(data) %in% dumbParameters)
+strippedData <- data[-indicesOfDumbParameters]
+```
+I haven't got much experience, but I expected the model to be better if I took more observations.
+That is why I partitioned the data (using createDataPartition) with parameter p=0.2:
+```{r}
+indicesForTraining <- createDataPartition(y=strippedData$classe,p=0.2,list=FALSE)
+training <- strippedData[indicesForTraining,]
+internalTesting <- strippedData[-indicesForTraining,]
+```
+OK, this is the point at which I actually ran the __train__ function (with the random forest method, "rf", as default).
+But I got very strange errors, which (after consulting them with google) were caused by a huge number of fields which had "NA"-s practically all over the place.
+So I extrected indices of fields which offered perfectly clear, non-NA columns (and called the variable __okData__):
+```{r}
+okData <- which(apply(!is.na(training),2,sum)==length(training[,1]))
+actualTraining <- training[,okData]
+```
+I also remembered to check if there are any fields with (near) zero variance, but they weren't any (I used the __nearZeroVar__ function).
+
+Once I had my data-set all tidy and good, I was ready to do the training:
+```{r}
+model <- train(classe~.,data=actualTraining,method="rf",trControl=trainControl(method="cv",number=5),prox=TRUE,allowParallel=TRUE)
+print(model)
+```
+I've read on the discussion forum that people had to wait hours for their results (using "rf" method), and that it is better to use the __randomForest__ function from the library of the same name.
+But I knew that the __caret__ package is really a front-end for the __randomForest__ library, so there *shouldn't* be any reason why __train__ would be much slower than the __randomForest__ function. 
+I found a solution, which suggested using the above options (like __prox=TRUE__, and __allowParallel=TRUE__), which significantly accelerated the calculations.
+
+Anyway, from the cross-validation I got the model with accuracy about 0.9631, which looked very promissing. 
+
+From the 3-3 lecture I knew there is a large risk of overfitting, so I used the __trainControl(method="cv",number=5)__ cross-validation, so that the best model would be produced by the __train__ function.
+
+To test my model, I used the __internalTesting__ data-set, but first I had to make it "tidy and good" just like I did with the __training__ data-set:
+```{r}
+actualInternalTesting <- internalTesting[,okData]
+```
+Now, I used my __model__ in the __predict__ function:
+```{r}
+ans <- predict(model,newdata=actualInternalTesting)
+print(confusionMatrix(actualInternalTesting$classe,ans))
+```
+And, as you can see, the model did a *really* good job on my __internalTesting__ set.
+
+As for the *real* testing data (the one provided in the course):
+```{r}
+strippedTestData <- testData[-indicesOfDumbParameters]
+actualTesting <- strippedTestData[,okData]
+
+ans <- predict(model,newdata=actualTesting)
+print(ans)
+pml_write_files(ans)
+```
+I submitted my answers and got a 100% score using this straightforward approach, all based on caret.
+
+Thanks for reading,
+
+ponadto
+
