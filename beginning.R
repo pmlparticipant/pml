@@ -4,6 +4,7 @@ library(randomForest) # needed in "train"
 set.seed(647)
 
 
+
 pml_write_files = function(x){
   n = length(x)
   for(i in 1:n){
